@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loan Origination Demo</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React and ReactDOM -->
+  <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- BPMN-js UMD -->
+  <script src="https://unpkg.com/bpmn-js@8.9.0/dist/bpmn-viewer.development.js"></script>
+  <style>
+    .highlight .djs-visual > :nth-child(1) {
+      stroke: #ff0000 !important;
+      stroke-width: 4px !important;
+    }
+    /* Simple emotion curve placeholder */
+    .emotion-curve {
+      stroke: #3b82f6;
+      stroke-width: 2;
+      fill: none;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex">
+  <div id="root" class="flex-1 p-4"></div>
+  <div id="services-panel" class="w-80 bg-white p-4 shadow-lg hidden md:block"></div>
+
+  <script type="text/babel" data-presets="env,react">
+    const { useState, useEffect, useRef } = React;
+
+    const steps = [
+      { id: 'Step1', title: 'Заявка' },
+      { id: 'Step2', title: 'Верификация документов' },
+      { id: 'Step3', title: 'Скоринг и андеррайтинг' },
+      { id: 'Step4', title: 'Оферта' },
+      { id: 'Step5', title: 'Подписание' },
+      { id: 'Step6', title: 'Выдача средств' },
+      { id: 'Step7', title: 'Мониторинг/Обслуживание' }
+    ];
+
+    const microservices = {
+      Step1: [
+        { name: 'Анкета-Сервис', desc: 'Сохраняет данные заявки', endpoint: '/api/form' }
+      ],
+      Step2: [
+        { name: 'Документ-Сервис', desc: 'Валидация документов через OCR', endpoint: '/api/documents' }
+      ],
+      Step3: [
+        { name: 'Сервис скоринга', desc: 'Принимает данные анкеты, возвращает скоринговый балл через REST API', endpoint: '/api/scoring' }
+      ],
+      Step4: [
+        { name: 'Оферта-Сервис', desc: 'Генерирует оферту в PDF', endpoint: '/api/offer' }
+      ],
+      Step5: [
+        { name: 'ЭЦП-Сервис', desc: 'Подпись документа клиента', endpoint: '/api/sign' }
+      ],
+      Step6: [
+        { name: 'Платежный-Сервис', desc: 'Инициирует перевод средств', endpoint: '/api/payment' }
+      ],
+      Step7: [
+        { name: 'Мониторинг-Сервис', desc: 'Отслеживает статус кредита', endpoint: '/api/monitor' }
+      ]
+    };
+
+    const bpmnXML = `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC" xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI">
+  <process id="loanOrigination" isExecutable="true">
+    <startEvent id="Start" name="Начало"/>
+    <userTask id="Step1" name="Заявка"/>
+    <userTask id="Step2" name="Верификация документов"/>
+    <userTask id="Step3" name="Скоринг и андеррайтинг"/>
+    <userTask id="Step4" name="Оферта"/>
+    <userTask id="Step5" name="Подписание"/>
+    <userTask id="Step6" name="Выдача средств"/>
+    <userTask id="Step7" name="Мониторинг/Обслуживание"/>
+    <endEvent id="End" name="Завершение"/>
+  </process>
+</definitions>`;
+
+    function App() {
+      const [current, setCurrent] = useState(0);
+      const [form, setForm] = useState({
+        fio: '', dob: '', passport: '', phone: '', email: '',
+        amount: 500000, term: 12, collateral: '', collData: {}, account: ''
+      });
+      const [payment, setPayment] = useState(0);
+      const viewerRef = useRef(null);
+
+      useEffect(() => {
+        // Initialize BPMN viewer
+        const viewer = new BpmnJS({ container: '#bpmn' });
+        viewer.importXML(bpmnXML, (err) => {
+          if (!err) {
+            highlight(viewer, steps[current].id);
+          }
+        });
+        viewerRef.current = viewer;
+      }, []);
+
+      useEffect(() => {
+        // Highlight current node
+        if (viewerRef.current) {
+          viewerRef.current.get('canvas').removeMarker(steps[current].id, 'highlight');
+          highlight(viewerRef.current, steps[current].id);
+        }
+      }, [current]);
+
+      useEffect(() => {
+        // Calculate annuity payment
+        const P = parseFloat(form.amount);
+        const n = parseInt(form.term);
+        const annualRate = 0.1;
+        const r = annualRate / 12;
+        const annuity = P * r / (1 - Math.pow(1 + r, -n));
+        setPayment(isFinite(annuity) ? annuity.toFixed(2) : 0);
+      }, [form.amount, form.term]);
+
+      function highlight(viewer, id) {
+        viewer.get('canvas').addMarker(id, 'highlight');
+      }
+
+      function nextStep() {
+        if (current < steps.length - 1) {
+          setTimeout(() => setCurrent(current + 1), 500);
+        }
+      }
+
+      return (
+        <div className="flex">
+          <div className="flex-1">
+            <div className="bg-white p-4 rounded shadow mb-4">
+              <div className="mb-2">Шаг {current + 1} из {steps.length}: {steps[current].title}</div>
+              <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
+                <div className="bg-blue-500 h-2 rounded-full" style={{ width: ((current + 1) / steps.length) * 100 + '%' }}></div>
+              </div>
+              {current === 0 && (
+                <form onSubmit={e => { e.preventDefault(); nextStep(); }} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <input type="text" placeholder="ФИО" value={form.fio} onChange={e => setForm({ ...form, fio: e.target.value })} required className="border p-2 rounded w-full focus:ring focus:ring-green-200 transition"/>
+                    <input type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} required className="border p-2 rounded w-full focus:ring focus:ring-green-200 transition"/>
+                    <input type="text" placeholder="Паспорт (серия и номер)" value={form.passport} onChange={e => setForm({ ...form, passport: e.target.value })} required className="border p-2 rounded w-full focus:ring focus:ring-green-200 transition"/>
+                    <input type="tel" placeholder="Телефон" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} required className="border p-2 rounded w-full focus:ring focus:ring-green-200 transition"/>
+                    <input type="email" placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required className="border p-2 rounded w-full focus:ring focus:ring-green-200 transition"/>
+                  </div>
+                  <div className="">Сумма кредита: <input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border p-2 rounded w-32 focus:ring focus:ring-green-200 transition"/> ₽</div>
+                  <div className="flex items-center space-x-4">
+                    <div>Срок (мес): <input type="number" value={form.term} onChange={e => setForm({ ...form, term: e.target.value })} className="border p-2 rounded w-20 focus:ring focus:ring-green-200 transition"/></div>
+                    <input type="range" min="1" max="60" value={form.term} onChange={e => setForm({ ...form, term: e.target.value })} className="w-1/3"/>
+                  </div>
+                  <div>Аннуитетный платеж: <span className="font-semibold">{payment} ₽</span></div>
+                  <div>
+                    Залог:
+                    <select value={form.collateral} onChange={e => setForm({ ...form, collateral: e.target.value, collData: {} })} className="border p-2 rounded ml-2">
+                      <option value="">-- выберите --</option>
+                      <option>Недвижимость</option>
+                      <option>Автомобиль</option>
+                      <option>Золото</option>
+                    </select>
+                  </div>
+                  {form.collateral === 'Недвижимость' && (
+                    <div className="space-y-2">
+                      <input type="text" placeholder="Адрес" onChange={e => setForm({ ...form, collData: {...form.collData, address: e.target.value} })} className="border p-2 rounded w-full"/>
+                      <input type="text" placeholder="Кадастровый номер" onChange={e => setForm({ ...form, collData: {...form.collData, cad: e.target.value} })} className="border p-2 rounded w-full"/>
+                    </div>
+                  )}
+                  {form.collateral === 'Автомобиль' && (
+                    <div className="space-y-2">
+                      <input type="text" placeholder="Марка" onChange={e => setForm({ ...form, collData: {...form.collData, make: e.target.value} })} className="border p-2 rounded w-full"/>
+                      <input type="text" placeholder="Модель" onChange={e => setForm({ ...form, collData: {...form.collData, model: e.target.value} })} className="border p-2 rounded w-full"/>
+                      <input type="text" placeholder="VIN" onChange={e => setForm({ ...form, collData: {...form.collData, vin: e.target.value} })} className="border p-2 rounded w-full"/>
+                    </div>
+                  )}
+                  {form.collateral === 'Золото' && (
+                    <div className="space-y-2">
+                      <input type="number" placeholder="Вес (грамм)" onChange={e => setForm({ ...form, collData: {...form.collData, weight: e.target.value} })} className="border p-2 rounded w-full"/>
+                      <input type="text" placeholder="Проба" onChange={e => setForm({ ...form, collData: {...form.collData, purity: e.target.value} })} className="border p-2 rounded w-full"/>
+                    </div>
+                  )}
+                  <div>Номер счёта: <input type="text" value={form.account} onChange={e => setForm({ ...form, account: e.target.value })} required className="border p-2 rounded w-full focus:ring focus:ring-green-200 transition"/></div>
+                  <button type="submit" className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition">Далее</button>
+                </form>
+              )}
+              {current > 0 && (
+                <div>
+                  <button onClick={nextStep} className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition">Симулировать завершение шага и перейти далее</button>
+                </div>
+              )}
+            </div>
+            <div className="bg-white p-4 rounded shadow mb-4">
+              <h3 className="font-semibold mb-2">Цели клиента</h3>
+              <p>Получить выгодный кредит быстро и удобно</p>
+              <h3 className="font-semibold mb-2 mt-4">Эмоциональная кривая</h3>
+              <svg className="w-full h-24">
+                <path className="emotion-curve" d="M0,60 Q60,20 120,80 T240,40" />
+              </svg>
+              <h3 className="font-semibold mb-2 mt-4">Ключевые метрики</h3>
+              <ul className="list-disc pl-5">
+                <li>CR: 35%</li>
+                <li>TTR: 2 дня</li>
+                <li>NPS: 72</li>
+              </ul>
+            </div>
+            <div id="bpmn" className="bg-white rounded shadow h-64"></div>
+          </div>
+          <div className="md:block w-80">
+            <div className="bg-white p-4 rounded shadow">
+              <h3 className="font-semibold mb-2">Микросервисы</h3>
+              {steps.map(s => (
+                <div key={s.id} className={\`border p-2 rounded mb-2 \${steps[current].id === s.id ? 'bg-blue-50' : ''}\`}>
+                  <h4 className="font-medium">{s.title}</h4>
+                  {microservices[s.id].map(m => (
+                    <div key={m.name} className="pl-2">
+                      <p className="italic">{m.desc}</p>
+                      <a href={m.endpoint} className="text-blue-600">{m.endpoint}</a>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
